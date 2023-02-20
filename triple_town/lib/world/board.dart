@@ -4,6 +4,8 @@ import "dart:collection" show Queue;
 
 import 'package:flame/components.dart';
 import 'package:flame/experimental.dart' show TapCallbacks, TapUpEvent, World;
+import 'package:flame/flame.dart' show Flame;
+import 'package:uuid/uuid.dart';
 
 const GRID_SIZE = 6;
 const TILE_SIZE = 100.0;
@@ -23,6 +25,13 @@ enum TileType {
   cathedral,
   tombstone,
 }
+
+const TILE_TYPE_TO_IMAGE = {
+  TileType.grass: 'grass.png',
+  TileType.bush: 'bush.png',
+  TileType.tree: 'tree.png',
+  TileType.bear: 'bear.png',
+};
 
 const PLACE_PROBABILITIES = {
   TileType.grass: 20,
@@ -96,6 +105,56 @@ class ChooseNextTileType implements GameAction {
   }
 }
 
+void iterateNESWNeighbors(gridX, gridY, Function(int x, int y) callback) {
+  for (var coord in [
+    [gridX, gridY - 1],
+    [gridX, gridY + 1],
+    [gridX - 1, gridY],
+    [gridX + 1, gridY]
+  ]) {
+    final x = coord[0];
+    final y = coord[1];
+    if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) {
+      continue;
+    }
+    callback(x, y);
+  }
+}
+
+class HandleBears implements GameAction {
+  @override
+  WorldState apply(WorldState worldState) {
+    final handledBears = <String>{};
+    for (var y = 0; y < GRID_SIZE; y++) {
+      for (var x = 0; x < GRID_SIZE; x++) {
+        final tile = worldState.tiles[y][x];
+        if (tile is! BearTile || handledBears.contains(tile.id)) {
+          continue;
+        }
+        final List<List<int>> movementCandidates = [];
+        iterateNESWNeighbors(x, y, (x, y) {
+          final tile = worldState.tiles[y][x];
+          if (tile.type == TileType.none) {
+            movementCandidates.add([x, y]);
+          }
+        });
+
+        if (movementCandidates.isEmpty) {
+          worldState.tiles[y][x] = SimpleTile(TileType.tombstone);
+        } else {
+          final random = Random();
+          final move =
+              movementCandidates[random.nextInt(movementCandidates.length)];
+          worldState.tiles[y][x] = SimpleTile(TileType.none);
+          worldState.tiles[move[1]][move[0]] = tile;
+          handledBears.add(tile.id);
+        }
+      }
+    }
+    return worldState;
+  }
+}
+
 String coordKey(int x, int y) => "$x,$y";
 
 class ApplyTriplesAction implements GameAction {
@@ -116,23 +175,13 @@ class ApplyTriplesAction implements GameAction {
     while (searchTiles.isNotEmpty) {
       final tile = searchTiles.removeFirst();
       tripleTiles[coordKey(tile.gridX, tile.gridY)] = tile;
-      for (var coord in [
-        [tile.gridX, tile.gridY - 1],
-        [tile.gridX, tile.gridY + 1],
-        [tile.gridX - 1, tile.gridY],
-        [tile.gridX + 1, tile.gridY],
-      ]) {
-        final x = coord[0];
-        final y = coord[1];
+      iterateNESWNeighbors(tile.gridX, tile.gridY, (x, y) {
         final key = coordKey(x, y);
-        if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) {
-          continue;
-        }
         final tile = worldState.tiles[y][x];
         if (tile.type == searchType && !tripleTiles.containsKey(key)) {
           searchTiles.add(LocatedTile(x, y, tile));
         }
-      }
+      });
     }
 
     if (tripleTiles.length < 3) {
@@ -163,7 +212,15 @@ class PlaceTileAction implements GameAction {
 
   @override
   WorldState apply(WorldState worldState) {
-    worldState.tiles[gridY][gridX] = SimpleTile(worldState.nextTileType);
+    if (worldState.tiles[gridY][gridX].type != TileType.none) {
+      throw Exception('Tile already placed at $gridX, $gridY');
+    }
+
+    if (worldState.nextTileType == TileType.bear) {
+      worldState.tiles[gridY][gridX] = BearTile(worldState.turn);
+    } else {
+      worldState.tiles[gridY][gridX] = SimpleTile(worldState.nextTileType);
+    }
     worldState.turn++;
     worldState.lastPlaceX = gridX;
     worldState.lastPlaceY = gridY;
@@ -185,6 +242,7 @@ class BearTile implements TileContents {
   @override
   final TileType type = TileType.bear;
   final int placeTurn;
+  final String id = Uuid().v4();
   BearTile(this.placeTurn);
 }
 
@@ -213,12 +271,28 @@ class TileTypeComponent extends PositionComponent {
 
   @override
   void render(Canvas canvas) {
-    ParagraphBuilder p = ParagraphBuilder(ParagraphStyle(
-      textAlign: TextAlign.center,
-    ))
-      ..addText(type.name);
-    Paragraph pp = p.build()..layout(ParagraphConstraints(width: size.x));
-    canvas.drawParagraph(pp, Offset(0, size.y / 2 - pp.height / 2));
+    if (type == TileType.none) {
+      return;
+    }
+
+    final String? imageName = TILE_TYPE_TO_IMAGE[type];
+
+    if (imageName != null) {
+      final image = Flame.images.fromCache(imageName);
+      canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+        Rect.fromLTWH(position.x, position.y, size.x, size.y),
+        Paint(),
+      );
+    } else {
+      ParagraphBuilder p = ParagraphBuilder(ParagraphStyle(
+        textAlign: TextAlign.center,
+      ))
+        ..addText(type.name);
+      Paragraph pp = p.build()..layout(ParagraphConstraints(width: size.x));
+      canvas.drawParagraph(pp, Offset(0, size.y / 2 - pp.height / 2));
+    }
   }
 }
 
@@ -235,7 +309,9 @@ class TileComponent extends PositionComponent with TapCallbacks {
     this.gridX,
     this.gridY,
     this.onAction,
-  ) : super(position: position, size: size);
+  ) : super(position: position, size: size) {
+    add(TileTypeComponent(Vector2.zero(), size, contents.type));
+  }
 
   @override
   void onTapUp(TapUpEvent event) {
@@ -250,7 +326,6 @@ class TileComponent extends PositionComponent with TapCallbacks {
         RRect.fromRectAndRadius(
             Rect.fromLTWH(0, 0, size.x, size.y), const Radius.circular(10)),
         Paint()..color = Color.fromARGB(255, 0, 131, 7));
-    TileTypeComponent(position, size, contents.type).render(canvas);
   }
 }
 
@@ -261,13 +336,15 @@ class NextTileTypeComponent extends PositionComponent {
     position,
     size,
     this.type,
-  ) : super(position: position, size: size);
+  ) : super(position: position, size: size) {
+    this.add(TileTypeComponent(
+        Vector2(size.x / 12, 0), Vector2(size.x * 2 / 3, size.y), type));
+  }
 
   @override
   void render(Canvas canvas) {
-    canvas.drawOval(Rect.fromLTWH(0, 0, size.x, size.y),
+    canvas.drawOval(Rect.fromLTWH(0, size.y / 2, size.x, size.y / 2),
         Paint()..color = Color.fromARGB(255, 0, 131, 7));
-    TileTypeComponent(position, size, type).render(canvas);
   }
 }
 
@@ -282,6 +359,7 @@ class FlippleWorld extends World {
     state = action.apply(state);
     state = ApplyTriplesAction().apply(state);
     state = ChooseNextTileType().apply(state);
+    state = HandleBears().apply(state);
     this._updateState(state);
   }
 
@@ -306,8 +384,8 @@ class FlippleWorld extends World {
 
     this.add(
       NextTileTypeComponent(
-        Vector2(-(BOARD_SIZE * .7) / 2, 450),
-        Vector2(BOARD_SIZE * .7, BOARD_SIZE * .2),
+        Vector2(-(BOARD_SIZE * .7) / 2, 400),
+        Vector2(BOARD_SIZE * .7, BOARD_SIZE * .4),
         state.nextTileType,
       ),
     );

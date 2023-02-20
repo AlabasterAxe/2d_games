@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:flame/components.dart' show Anchor, Vector2;
+import 'package:flame/components.dart' show Anchor, Sprite, Vector2;
 import 'package:flame/experimental.dart'
     show CameraComponent, HasTappableComponents, World;
 import 'package:flame/game.dart' show FlameGame;
@@ -21,6 +21,11 @@ class FlippleTownGame extends FlameGame with HasTappableComponents {
       ..viewfinder.position = Vector2(0, 0)
       ..viewfinder.anchor = Anchor.center;
     add(cameraComponent!);
+
+    await images.load('bear.png');
+    await images.load('bush.png');
+    await images.load('grass.png');
+    await images.load('tree.png');
   }
 
   @override
