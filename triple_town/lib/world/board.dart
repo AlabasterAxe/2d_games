@@ -1,5 +1,6 @@
-import 'dart:developer';
+import 'dart:math' show Random;
 import 'dart:ui';
+import "dart:collection" show Queue;
 
 import 'package:flame/components.dart';
 import 'package:flame/experimental.dart' show TapCallbacks, TapUpEvent, World;
@@ -23,8 +24,135 @@ enum TileType {
   tombstone,
 }
 
+const PLACE_PROBABILITIES = {
+  TileType.grass: 20,
+  TileType.bush: 4,
+  TileType.tree: 2,
+  TileType.hut: 1,
+  TileType.bear: 2,
+};
+
+TileType getNextTileType() {
+  final random = Random();
+  final roll =
+      random.nextInt(PLACE_PROBABILITIES.values.reduce((a, b) => a + b));
+  var total = 0;
+  for (final entry in PLACE_PROBABILITIES.entries) {
+    total += entry.value;
+    if (roll < total) {
+      return entry.key;
+    }
+  }
+  return TileType.grass;
+}
+
+const TRIPLE_MAPPING = {
+  TileType.grass: TileType.bush,
+  TileType.bush: TileType.tree,
+  TileType.tree: TileType.hut,
+  TileType.hut: TileType.house,
+  TileType.tombstone: TileType.church,
+  TileType.church: TileType.cathedral,
+};
+
 abstract class GameAction {
   WorldState apply(WorldState worldState);
+}
+
+class LocatedTile {
+  final int gridX;
+  final int gridY;
+  final TileContents tileContents;
+
+  LocatedTile(this.gridX, this.gridY, this.tileContents);
+}
+
+class ApplyTripleAction implements GameAction {
+  final List<LocatedTile> triple;
+  final LocatedTile placedTile;
+
+  ApplyTripleAction(this.triple, this.placedTile);
+
+  @override
+  WorldState apply(WorldState worldState) {
+    for (final tile in triple) {
+      worldState.tiles[tile.gridY][tile.gridX] = SimpleTile(TileType.none);
+    }
+    final newType = TRIPLE_MAPPING[placedTile.tileContents.type];
+    if (newType == null) {
+      throw Exception(
+          'Triple mapping not found for ${placedTile.tileContents.type}');
+    }
+    worldState.tiles[placedTile.gridY][placedTile.gridX] = SimpleTile(newType);
+    return worldState;
+  }
+}
+
+class ChooseNextTileType implements GameAction {
+  @override
+  WorldState apply(WorldState worldState) {
+    worldState.nextTileType = getNextTileType();
+    return worldState;
+  }
+}
+
+String coordKey(int x, int y) => "$x,$y";
+
+class ApplyTriplesAction implements GameAction {
+  ApplyTripleAction? findTriple(WorldState worldState) {
+    final lastPlaceX = worldState.lastPlaceX;
+    final lastPlaceY = worldState.lastPlaceY;
+
+    if (lastPlaceX == null || lastPlaceY == null) {
+      return null;
+    }
+
+    final placedTile = LocatedTile(
+        lastPlaceX, lastPlaceY, worldState.tiles[lastPlaceY][lastPlaceX]);
+    final tripleTiles = <String, LocatedTile>{};
+    final searchType = placedTile.tileContents.type;
+    final searchTiles = Queue.from([placedTile]);
+
+    while (searchTiles.isNotEmpty) {
+      final tile = searchTiles.removeFirst();
+      tripleTiles[coordKey(tile.gridX, tile.gridY)] = tile;
+      for (var coord in [
+        [tile.gridX, tile.gridY - 1],
+        [tile.gridX, tile.gridY + 1],
+        [tile.gridX - 1, tile.gridY],
+        [tile.gridX + 1, tile.gridY],
+      ]) {
+        final x = coord[0];
+        final y = coord[1];
+        final key = coordKey(x, y);
+        if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) {
+          continue;
+        }
+        final tile = worldState.tiles[y][x];
+        if (tile.type == searchType && !tripleTiles.containsKey(key)) {
+          searchTiles.add(LocatedTile(x, y, tile));
+        }
+      }
+    }
+
+    if (tripleTiles.length < 3) {
+      return null;
+    }
+
+    return ApplyTripleAction(
+        tripleTiles.values.toList(growable: false), placedTile);
+  }
+
+  @override
+  WorldState apply(WorldState worldState) {
+    while (true) {
+      final tripleAction = findTriple(worldState);
+      if (tripleAction == null) {
+        return worldState;
+      }
+      worldState = tripleAction.apply(worldState);
+    }
+  }
 }
 
 class PlaceTileAction implements GameAction {
@@ -37,6 +165,8 @@ class PlaceTileAction implements GameAction {
   WorldState apply(WorldState worldState) {
     worldState.tiles[gridY][gridX] = SimpleTile(worldState.nextTileType);
     worldState.turn++;
+    worldState.lastPlaceX = gridX;
+    worldState.lastPlaceY = gridY;
     return worldState;
   }
 }
@@ -70,6 +200,9 @@ class WorldState {
   TileType nextTileType = TileType.grass;
 
   int turn = 0;
+
+  int? lastPlaceX;
+  int? lastPlaceY;
 }
 
 class TileTypeComponent extends PositionComponent {
@@ -106,7 +239,9 @@ class TileComponent extends PositionComponent with TapCallbacks {
 
   @override
   void onTapUp(TapUpEvent event) {
-    onAction(PlaceTileAction(gridX, gridY));
+    if (contents.type == TileType.none) {
+      onAction(PlaceTileAction(gridX, gridY));
+    }
   }
 
   @override
@@ -145,6 +280,8 @@ class FlippleWorld extends World {
 
   void _onAction(GameAction action) {
     state = action.apply(state);
+    state = ApplyTriplesAction().apply(state);
+    state = ChooseNextTileType().apply(state);
     this._updateState(state);
   }
 

@@ -28,8 +28,9 @@ class FlippleTownGame extends FlameGame with HasTappableComponents {
     super.update(dt);
     time += dt;
     cameraComponent!.viewfinder.position = Vector2(
-      (1 + 100 * sin(time)),
-      (1 + 100 * cos(time)),
+      (2 * sin(time)),
+      (2 * cos(time)),
     );
+    cameraComponent!.viewfinder.angle = (pi / 720) * sin(time);
   }
 }
