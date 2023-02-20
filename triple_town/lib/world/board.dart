@@ -23,6 +23,24 @@ enum TileType {
   tombstone,
 }
 
+abstract class GameAction {
+  WorldState apply(WorldState worldState);
+}
+
+class PlaceTileAction implements GameAction {
+  final int gridX;
+  final int gridY;
+
+  PlaceTileAction(this.gridX, this.gridY);
+
+  @override
+  WorldState apply(WorldState worldState) {
+    worldState.tiles[gridY][gridX] = SimpleTile(worldState.nextTileType);
+    worldState.turn++;
+    return worldState;
+  }
+}
+
 abstract class TileContents {
   TileType get type;
 }
@@ -50,6 +68,8 @@ class WorldState {
   );
 
   TileType nextTileType = TileType.grass;
+
+  int turn = 0;
 }
 
 class TileTypeComponent extends PositionComponent {
@@ -71,16 +91,22 @@ class TileTypeComponent extends PositionComponent {
 
 class TileComponent extends PositionComponent with TapCallbacks {
   final TileContents contents;
+  final int gridX;
+  final int gridY;
+  final Function(GameAction action) onAction;
 
   TileComponent(
     Vector2 position,
     Vector2 size,
     this.contents,
+    this.gridX,
+    this.gridY,
+    this.onAction,
   ) : super(position: position, size: size);
 
   @override
   void onTapUp(TapUpEvent event) {
-    log("Tapped tile");
+    onAction(PlaceTileAction(gridX, gridY));
   }
 
   @override
@@ -110,29 +136,43 @@ class NextTileTypeComponent extends PositionComponent {
   }
 }
 
-World getWorld(WorldState worldState) {
-  final world = World();
+class FlippleWorld extends World {
+  WorldState state;
 
-  for (var i = 0; i < worldState.tiles.length; i++) {
-    for (var j = 0; j < worldState.tiles[0].length; j++) {
-      world.add(
-        TileComponent(
-          Vector2((i - GRID_SIZE / 2) * (TILE_SIZE + TILE_SPACING),
-              (j - GRID_SIZE / 2) * (TILE_SIZE + TILE_SPACING)),
-          Vector2(TILE_SIZE, TILE_SIZE),
-          worldState.tiles[i][j],
-        ),
-      );
-    }
+  FlippleWorld(this.state) : super() {
+    this._updateState(state);
   }
 
-  world.add(
-    NextTileTypeComponent(
-      Vector2(-(BOARD_SIZE * .7) / 2, 450),
-      Vector2(BOARD_SIZE * .7, BOARD_SIZE * .2),
-      worldState.nextTileType,
-    ),
-  );
+  void _onAction(GameAction action) {
+    state = action.apply(state);
+    this._updateState(state);
+  }
 
-  return world;
+  _updateState(WorldState newState) {
+    this.removeAll(children.query());
+    state = newState;
+    for (var i = 0; i < state.tiles.length; i++) {
+      for (var j = 0; j < state.tiles[0].length; j++) {
+        this.add(
+          TileComponent(
+            Vector2((j - GRID_SIZE / 2) * (TILE_SIZE + TILE_SPACING),
+                (i - GRID_SIZE / 2) * (TILE_SIZE + TILE_SPACING)),
+            Vector2(TILE_SIZE, TILE_SIZE),
+            state.tiles[i][j],
+            j,
+            i,
+            _onAction,
+          ),
+        );
+      }
+    }
+
+    this.add(
+      NextTileTypeComponent(
+        Vector2(-(BOARD_SIZE * .7) / 2, 450),
+        Vector2(BOARD_SIZE * .7, BOARD_SIZE * .2),
+        state.nextTileType,
+      ),
+    );
+  }
 }
