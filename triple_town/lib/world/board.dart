@@ -65,8 +65,7 @@ class TileTypeComponent extends PositionComponent {
     ))
       ..addText(type.name);
     Paragraph pp = p.build()..layout(ParagraphConstraints(width: size.x));
-    canvas.drawParagraph(
-        pp, position.toOffset().translate(0, size.y / 2 - pp.height / 2));
+    canvas.drawParagraph(pp, Offset(0, size.y / 2 - pp.height / 2));
   }
 }
 
@@ -88,27 +87,24 @@ class TileComponent extends PositionComponent with TapCallbacks {
   void render(Canvas canvas) {
     canvas.drawRRect(
         RRect.fromRectAndRadius(
-            Rect.fromLTWH(position.x, position.y, size.x, size.y),
-            const Radius.circular(10)),
+            Rect.fromLTWH(0, 0, size.x, size.y), const Radius.circular(10)),
         Paint()..color = Color.fromARGB(255, 0, 131, 7));
     TileTypeComponent(position, size, contents.type).render(canvas);
   }
 }
 
-class NextTileTypeComponent extends Component {
-  final Vector2 position;
-  final Vector2 size;
+class NextTileTypeComponent extends PositionComponent {
   final TileType type;
 
   NextTileTypeComponent(
-    this.position,
-    this.size,
+    position,
+    size,
     this.type,
-  );
+  ) : super(position: position, size: size);
 
   @override
   void render(Canvas canvas) {
-    canvas.drawOval(Rect.fromLTWH(position.x, position.y, size.x, size.y),
+    canvas.drawOval(Rect.fromLTWH(0, 0, size.x, size.y),
         Paint()..color = Color.fromARGB(255, 0, 131, 7));
     TileTypeComponent(position, size, type).render(canvas);
   }

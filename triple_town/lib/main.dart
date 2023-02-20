@@ -32,7 +32,7 @@ void main() {
             right: 0,
             child: Padding(
               padding: const EdgeInsets.all(16.0),
-              child: Row(children: [
+              child: Row(children: const [
                 Text("Flipple Town",
                     style: TextStyle(
                         fontSize: 30, color: Color.fromARGB(255, 27, 33, 27))),
