@@ -90,3 +90,28 @@ class WorldState {
   int? lastPlaceX;
   int? lastPlaceY;
 }
+
+class LocatedTile {
+  final GridLoc loc;
+  final TileContents tileContents;
+
+  LocatedTile(this.loc, this.tileContents);
+}
+
+void iterateNESWNeighbors(gridX, gridY, Function(int x, int y) callback) {
+  for (var coord in [
+    [gridX, gridY - 1],
+    [gridX, gridY + 1],
+    [gridX - 1, gridY],
+    [gridX + 1, gridY]
+  ]) {
+    final x = coord[0];
+    final y = coord[1];
+    if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) {
+      continue;
+    }
+    callback(x, y);
+  }
+}
+
+String locKey(int x, int y) => "$x,$y";
