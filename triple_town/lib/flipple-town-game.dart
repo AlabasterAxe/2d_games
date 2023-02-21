@@ -7,6 +7,8 @@ import 'package:flame/experimental.dart'
 import 'package:flame/game.dart' show FlameGame;
 import 'package:triple_town/world/board.dart';
 
+import 'world/state.dart';
+
 class FlippleTownGame extends FlameGame with HasTappableComponents {
   var worldState = WorldState();
   CameraComponent? cameraComponent;
@@ -32,10 +34,10 @@ class FlippleTownGame extends FlameGame with HasTappableComponents {
   void update(double dt) {
     super.update(dt);
     time += dt;
-    cameraComponent!.viewfinder.position = Vector2(
-      (2 * sin(time)),
-      (2 * cos(time)),
-    );
-    cameraComponent!.viewfinder.angle = (pi / 720) * sin(time);
+    // cameraComponent!.viewfinder.position = Vector2(
+    //   (2 * sin(time)),
+    //   (2 * cos(time)),
+    // );
+    // cameraComponent!.viewfinder.angle = (pi / 720) * sin(time);
   }
 }

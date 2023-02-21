@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'dart:math' show Random;
 import 'dart:ui';
 import "dart:collection" show Queue;
@@ -5,26 +6,12 @@ import "dart:collection" show Queue;
 import 'package:flame/components.dart';
 import 'package:flame/experimental.dart' show TapCallbacks, TapUpEvent, World;
 import 'package:flame/flame.dart' show Flame;
+import 'package:triple_town/world/state.dart';
 import 'package:uuid/uuid.dart';
 
-const GRID_SIZE = 6;
 const TILE_SIZE = 100.0;
 const TILE_SPACING = 5.0;
 const BOARD_SIZE = GRID_SIZE * (TILE_SIZE + TILE_SPACING);
-
-enum TileType {
-  none,
-  grass,
-  bush,
-  tree,
-  hut,
-  rock,
-  house,
-  bear,
-  church,
-  cathedral,
-  tombstone,
-}
 
 const TILE_TYPE_TO_IMAGE = {
   TileType.grass: 'grass.png',
@@ -33,47 +20,15 @@ const TILE_TYPE_TO_IMAGE = {
   TileType.bear: 'bear.png',
 };
 
-const PLACE_PROBABILITIES = {
-  TileType.grass: 20,
-  TileType.bush: 4,
-  TileType.tree: 2,
-  TileType.hut: 1,
-  TileType.bear: 2,
-};
-
-TileType getNextTileType() {
-  final random = Random();
-  final roll =
-      random.nextInt(PLACE_PROBABILITIES.values.reduce((a, b) => a + b));
-  var total = 0;
-  for (final entry in PLACE_PROBABILITIES.entries) {
-    total += entry.value;
-    if (roll < total) {
-      return entry.key;
-    }
-  }
-  return TileType.grass;
-}
-
-const TRIPLE_MAPPING = {
-  TileType.grass: TileType.bush,
-  TileType.bush: TileType.tree,
-  TileType.tree: TileType.hut,
-  TileType.hut: TileType.house,
-  TileType.tombstone: TileType.church,
-  TileType.church: TileType.cathedral,
-};
-
 abstract class GameAction {
   WorldState apply(WorldState worldState);
 }
 
 class LocatedTile {
-  final int gridX;
-  final int gridY;
+  final GridLoc loc;
   final TileContents tileContents;
 
-  LocatedTile(this.gridX, this.gridY, this.tileContents);
+  LocatedTile(this.loc, this.tileContents);
 }
 
 class ApplyTripleAction implements GameAction {
@@ -85,14 +40,14 @@ class ApplyTripleAction implements GameAction {
   @override
   WorldState apply(WorldState worldState) {
     for (final tile in triple) {
-      worldState.tiles[tile.gridY][tile.gridX] = SimpleTile(TileType.none);
+      worldState.tiles[tile.loc.y][tile.loc.x] = SimpleTile(TileType.none);
     }
     final newType = TRIPLE_MAPPING[placedTile.tileContents.type];
     if (newType == null) {
       throw Exception(
           'Triple mapping not found for ${placedTile.tileContents.type}');
     }
-    worldState.tiles[placedTile.gridY][placedTile.gridX] = SimpleTile(newType);
+    worldState.tiles[placedTile.loc.y][placedTile.loc.x] = SimpleTile(newType);
     return worldState;
   }
 }
@@ -166,8 +121,8 @@ class ApplyTriplesAction implements GameAction {
       return null;
     }
 
-    final placedTile = LocatedTile(
-        lastPlaceX, lastPlaceY, worldState.tiles[lastPlaceY][lastPlaceX]);
+    final placedTile = LocatedTile(GridLoc(lastPlaceX, lastPlaceY),
+        worldState.tiles[lastPlaceY][lastPlaceX]);
     final tripleTiles = <String, LocatedTile>{};
     final searchType = placedTile.tileContents.type;
     final searchTiles = Queue.from([placedTile]);
@@ -179,7 +134,7 @@ class ApplyTriplesAction implements GameAction {
         final key = coordKey(x, y);
         final tile = worldState.tiles[y][x];
         if (tile.type == searchType && !tripleTiles.containsKey(key)) {
-          searchTiles.add(LocatedTile(x, y, tile));
+          searchTiles.add(LocatedTile(GridLoc(x, y), tile));
         }
       });
     }
@@ -226,41 +181,6 @@ class PlaceTileAction implements GameAction {
     worldState.lastPlaceY = gridY;
     return worldState;
   }
-}
-
-abstract class TileContents {
-  TileType get type;
-}
-
-class SimpleTile implements TileContents {
-  @override
-  final TileType type;
-  SimpleTile(this.type);
-}
-
-class BearTile implements TileContents {
-  @override
-  final TileType type = TileType.bear;
-  final int placeTurn;
-  final String id = Uuid().v4();
-  BearTile(this.placeTurn);
-}
-
-class WorldState {
-  List<List<TileContents>> tiles = List.generate(
-    GRID_SIZE,
-    (i) => List.generate(
-      GRID_SIZE,
-      (j) => SimpleTile(TileType.none),
-    ),
-  );
-
-  TileType nextTileType = TileType.grass;
-
-  int turn = 0;
-
-  int? lastPlaceX;
-  int? lastPlaceY;
 }
 
 class TileTypeComponent extends PositionComponent {
@@ -348,6 +268,32 @@ class NextTileTypeComponent extends PositionComponent {
   }
 }
 
+class HoldingZone extends PositionComponent with TapCallbacks {
+  final TileType type;
+  final Function(GameAction action) onAction;
+
+  HoldingZone(
+    position,
+    size,
+    this.type,
+    this.onAction,
+  ) : super(position: position, size: size) {
+    this.add(TileTypeComponent(
+        Vector2(size.x / 12, 0), Vector2(size.x * 2 / 3, size.y), type));
+  }
+
+  @override
+  void onTapUp(TapUpEvent event) {
+    log("Tapped holding zone");
+  }
+
+  @override
+  void render(Canvas canvas) {
+    canvas.drawOval(Rect.fromLTWH(0, size.y / 2, size.x, size.y / 2),
+        Paint()..color = Color.fromARGB(255, 179, 110, 0));
+  }
+}
+
 class FlippleWorld extends World {
   WorldState state;
 
@@ -368,17 +314,29 @@ class FlippleWorld extends World {
     state = newState;
     for (var i = 0; i < state.tiles.length; i++) {
       for (var j = 0; j < state.tiles[0].length; j++) {
-        this.add(
-          TileComponent(
-            Vector2((j - GRID_SIZE / 2) * (TILE_SIZE + TILE_SPACING),
-                (i - GRID_SIZE / 2) * (TILE_SIZE + TILE_SPACING)),
-            Vector2(TILE_SIZE, TILE_SIZE),
-            state.tiles[i][j],
-            j,
-            i,
-            _onAction,
-          ),
-        );
+        if (j == 0 && i == 0) {
+          this.add(
+            HoldingZone(
+              Vector2((j - GRID_SIZE / 2) * (TILE_SIZE + TILE_SPACING),
+                  (i - GRID_SIZE / 2) * (TILE_SIZE + TILE_SPACING)),
+              Vector2(TILE_SIZE, TILE_SIZE),
+              state.holdingZoneTileType,
+              _onAction,
+            ),
+          );
+        } else {
+          this.add(
+            TileComponent(
+              Vector2((j - GRID_SIZE / 2) * (TILE_SIZE + TILE_SPACING),
+                  (i - GRID_SIZE / 2) * (TILE_SIZE + TILE_SPACING)),
+              Vector2(TILE_SIZE, TILE_SIZE),
+              state.tiles[i][j],
+              j,
+              i,
+              _onAction,
+            ),
+          );
+        }
       }
     }
 
