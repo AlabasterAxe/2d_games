@@ -1,13 +1,10 @@
 import 'dart:developer';
-import 'dart:math' show Random;
 import 'dart:ui';
-import "dart:collection" show Queue;
 
 import 'package:flame/components.dart';
 import 'package:flame/experimental.dart' show TapCallbacks, TapUpEvent, World;
 import 'package:flame/flame.dart' show Flame;
 import 'package:triple_town/world/state.dart';
-import 'package:uuid/uuid.dart';
 
 import 'actions.dart';
 
@@ -117,13 +114,12 @@ class HoldingZone extends PositionComponent with TapCallbacks {
     this.type,
     this.onAction,
   ) : super(position: position, size: size) {
-    this.add(TileTypeComponent(
-        Vector2(size.x / 12, 0), Vector2(size.x * 2 / 3, size.y), type));
+    this.add(TileTypeComponent(Vector2(0, 0), Vector2(size.x, size.y), type));
   }
 
   @override
   void onTapUp(TapUpEvent event) {
-    log("Tapped holding zone");
+    this.onAction(SwapHoldingZone());
   }
 
   @override
@@ -142,9 +138,6 @@ class FlippleWorld extends World {
 
   void _onAction(GameAction action) {
     state = action.apply(state);
-    state = ApplyTriplesAction().apply(state);
-    state = ChooseNextTileType().apply(state);
-    state = HandleBears().apply(state);
     this._updateState(state);
   }
 

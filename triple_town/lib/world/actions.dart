@@ -95,12 +95,12 @@ class ApplyTriplesAction implements GameAction {
         worldState.tiles[lastPlaceY][lastPlaceX]);
     final tripleTiles = <String, LocatedTile>{};
     final searchType = placedTile.tileContents.type;
-    final searchTiles = Queue.from([placedTile]);
+    final searchTiles = Queue<LocatedTile>.from([placedTile]);
 
     while (searchTiles.isNotEmpty) {
       final tile = searchTiles.removeFirst();
-      tripleTiles[locKey(tile.gridX, tile.gridY)] = tile;
-      iterateNESWNeighbors(tile.gridX, tile.gridY, (x, y) {
+      tripleTiles[locKey(tile.loc.x, tile.loc.y)] = tile;
+      iterateNESWNeighbors(tile.loc.x, tile.loc.y, (x, y) {
         final key = locKey(x, y);
         final tile = worldState.tiles[y][x];
         if (tile.type == searchType && !tripleTiles.containsKey(key)) {
@@ -149,6 +149,26 @@ class PlaceTileAction implements GameAction {
     worldState.turn++;
     worldState.lastPlaceX = gridX;
     worldState.lastPlaceY = gridY;
+    worldState = ApplyTriplesAction().apply(worldState);
+    worldState = ChooseNextTileType().apply(worldState);
+    worldState = HandleBears().apply(worldState);
     return worldState;
+  }
+}
+
+class SwapHoldingZone implements GameAction {
+  SwapHoldingZone();
+
+  @override
+  WorldState apply(WorldState worldState) {
+    if (worldState.holdingZoneTileType == TileType.none) {
+      worldState.holdingZoneTileType = worldState.nextTileType;
+      return ChooseNextTileType().apply(worldState);
+    } else {
+      final holdingZone = worldState.holdingZoneTileType;
+      worldState.holdingZoneTileType = worldState.nextTileType;
+      worldState.nextTileType = holdingZone;
+      return worldState;
+    }
   }
 }

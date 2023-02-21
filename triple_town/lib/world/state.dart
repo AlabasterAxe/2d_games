@@ -22,6 +22,7 @@ enum TileType {
   church,
   cathedral,
   tombstone,
+  holding_zone,
 }
 
 const PLACE_PROBABILITIES = {
@@ -78,7 +79,9 @@ class WorldState {
     GRID_SIZE,
     (i) => List.generate(
       GRID_SIZE,
-      (j) => SimpleTile(TileType.none),
+      (j) => i == 0 && j == 0
+          ? SimpleTile(TileType.holding_zone)
+          : SimpleTile(TileType.none),
     ),
   );
 
